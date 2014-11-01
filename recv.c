@@ -28,18 +28,19 @@
 
 short int ack_arr1[MAX_PKT_NO];
 short int ack_arr2[MAX_PKT_NO];
+short int ack_arr3[MAX_PKT_NO];
 
-int prev1, prev2;  
+int prev1, prev2, prev3; 
 int s, f; 
 int flag = 0;
 struct sockaddr_ll saddrll;
 char* buffer;
 socklen_t sll_len;
-char interface[5], output1[6], output2[6]; 
-short int source1, source2, destination;
+char interface[5], output1[6], output2[6], output3[6]; 
+short int source1, source2, source3, destination;
 struct timeval start, end;
 int rem_count, gg;
-int file_flag1 = 0,file_flag2 =0;
+int file_flag1 = 0,file_flag2 = 0, file_flag3 = 0;
 
 void initialize() {
  
@@ -135,12 +136,16 @@ void receiver() {
   // Initializations
   char *heap_mem1 = (char *)malloc(MAX_PAY_SIZE*MAX_PKT_NO);
   char *heap_mem2 = (char *)malloc(MAX_PAY_SIZE*MAX_PKT_NO);
+  char *heap_mem3 = (char *)malloc(MAX_PAY_SIZE*MAX_PKT_NO);
   FILE *fp1 = fopen(output1,"w");
   FILE *fp2 = fopen(output2,"w");
+  FILE *fp3 = fopen(output3,"w");
   assert(heap_mem1 != NULL);
   assert(fp1 != NULL);
   assert(heap_mem2 != NULL);
   assert(fp2 != NULL);
+  assert(heap_mem3 != NULL);
+  assert(fp3 != NULL);
   struct myudp* head;
   int length = 0;
  
@@ -150,7 +155,7 @@ void receiver() {
     length = recvfrom(s, buffer, ETH_FRAME_LEN,0,(struct sockaddr *)&saddrll, &sll_len);
     f = 15;
 
-    if (file_flag1 && file_flag2) {
+    if (file_flag1 && file_flag2 && file_flag3) {
       
        gettimeofday(&end, NULL);
        printf("END time = %f \n", (double)(end.tv_sec + end.tv_usec / 1000000));
@@ -160,6 +165,7 @@ void receiver() {
       f = 5;
       sender(source1, ack_arr1);
       sender(source2, ack_arr2);
+      sender(source3, ack_arr3);
       //usleep(500);
       continue;
     }
@@ -214,6 +220,30 @@ void receiver() {
 	   file_flag2 = 1;
 	   }
          }
+
+	 if(ntohs(head->src) == source3) {
+	   // printf("SEQ : %d : SCR : %d\n", ntohs(head->seq), source1);
+
+	  memcpy(heap_mem3+(htons(head->seq))*MAX_PAY_SIZE, payload, MAX_PAY_SIZE);
+	  ack_arr3[htons(head->seq)] = 0;
+	  if (gg == 0) {
+	    gettimeofday(&start, NULL);
+	    printf("START time = %f\n", (double)(start.tv_sec + start.tv_usec / 1000000));
+
+	    gg = 1;
+	  }
+
+  
+	  rem_count = check_arr(ack_arr3);
+	  if(rem_count == 0 && file_flag3 == 0) {	  
+	    sender(source3, ack_arr3);
+	    printf("Writing to file for %d\n", source3);
+	    fwrite(heap_mem3,1,TEN_MB,fp3);
+	    fclose(fp3);
+	    file_flag3 = 1;
+	  }
+	 }
+
        }
        else if(ntohs(head->seq) == 9998 && ntohs(head->seq) != 9999) {
 	 if(ntohs(head->src) == source1) {
@@ -230,6 +260,13 @@ void receiver() {
 	      prev2 = cnt;
 	   }
 	 }
+	 if(ntohs(head->src) == source3) {
+	  int cnt = check_arr(ack_arr3);
+	    if(cnt  < prev3){
+	      sender(source3, ack_arr3);
+	      prev3 = cnt;
+	    }
+	 }
        }
     }
   }
@@ -240,12 +277,15 @@ int main(int argc, char* argv[]) {
   
   prev1 = MAX_PKT_NO;
   prev2 = MAX_PKT_NO;
+  prev3 = MAX_PKT_NO;
   destination = (short int)atoi(argv[1]);
   source1 = (short int)atoi(argv[2]);
   source2 = (short int)atoi(argv[3]);
-  strcpy(interface, argv[4]);
-  strcpy(output1, argv[5]);
-  strcpy(output2, argv[6]);
+  source3 = (short int)atoi(argv[4]);
+  strcpy(interface, argv[5]);
+  strcpy(output1, argv[6]);
+  strcpy(output2, argv[7]);
+  strcpy(output3, argv[8]);
   buffer = (void*)malloc(ETH_FRAME_LEN);
   
   gg = 0;
@@ -253,6 +293,7 @@ int main(int argc, char* argv[]) {
   for(i = 0;i < MAX_PKT_NO; i++) {
     ack_arr1[i] = 1;
     ack_arr2[i] = 1;
+    ack_arr3[i] = 1;
   }  
   initialize();
   receiver();
